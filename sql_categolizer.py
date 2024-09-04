@@ -30,7 +30,7 @@ class SQLParser:
     return identifier.get_real_name()
 
   @staticmethod
-  def extract_tables(parsed, keyword='FROM'):
+  def extract_tables(parsed, keyword='FROM', is_join=False):
     keyword_seen = False
     for item in parsed.tokens:
       if keyword_seen:
@@ -41,8 +41,20 @@ class SQLParser:
             yield SQLParser.process_identifier(identifier)
         elif item.ttype is Keyword:
           return
+      elif item.ttype is Keyword and is_join and SQLParser.is_join_clause(item.value.upper()):
+        keyword_seen = True
       elif item.ttype is Keyword and item.value.upper() == keyword:
         keyword_seen = True
+
+  @staticmethod
+  def is_join_clause(sql_str):
+    # 正規表現パターン
+    # https://github.com/andialbrecht/sqlparse/blob/master/sqlparse/keywords.py#L70-L71
+    join_pattern = r'((LEFT\s+|RIGHT\s+|FULL\s+)?(INNER\s+|OUTER\s+|STRAIGHT\s+)?|(CROSS\s+|NATURAL\s+)?)?JOIN\b'
+    # re.search() を使用してパターンにマッチするか確認
+    match = re.search(join_pattern, sql_str, re.IGNORECASE)
+    # マッチした場合はTrue、そうでない場合はFalseを返す
+    return bool(match)
 
   @staticmethod
   def abstract_conditions(conditions):
@@ -83,8 +95,8 @@ class SQLParser:
   @staticmethod
   def parse_sql(sql):
     parsed = sqlparse.parse(sql)[0]
-    from_tables = list(SQLParser.extract_tables(parsed))
-    join_tables = list(SQLParser.extract_tables(parsed, 'JOIN'))
+    from_tables = list(SQLParser.extract_tables(parsed, 'FROM'))
+    join_tables = list(SQLParser.extract_tables(parsed, 'JOIN', True))
     where_conditions = SQLParser.extract_conditions(parsed)
     where_conditions = SQLParser.process_subqueries(where_conditions)
     
@@ -134,7 +146,8 @@ class TestClass:
       "SELECT * FROM table5 WHERE (status = 'pending' OR status = 'processing') AND priority > 5",
       "SELECT * FROM table6 WHERE id IN (SELECT id FROM table7 WHERE value > 100)",
       "SELECT * FROM (SELECT id, name FROM table8 WHERE status = 'active') subquery WHERE subquery.id > 10",
-      "SELECT * FROM orders WHERE customer_id IN (SELECT id FROM customers WHERE country = 'USA' AND age > 18) AND ACTIVE = true"
+      "SELECT * FROM orders WHERE customer_id IN (SELECT id FROM customers WHERE country = 'USA' AND age > 18) AND ACTIVE = true",
+      "SELECT * FROM table1 LEFT  JOIN table2 ON table1.id = table2.id WHERE table1.name = 'John' AND table2.age > 30",
     ]
 
   @pytest.fixture
@@ -149,6 +162,7 @@ class TestClass:
       (('table6',), (), 'id IN (sub:table7|value > 9)'),
       (('sub:table8',), (), 'subquery.id > 9'),
       (('orders',), (), "customer_id IN (sub:customers|country = 'X' AND age > 9) AND ACTIVE = B"),
+      (('table1',), ('table2',), "table1.name = 'X' AND table2.age > 9"),
     ]
 
   def test_checkSQL(self, sql_list, expected_parser):
