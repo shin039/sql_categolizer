@@ -140,21 +140,21 @@ class TestClass:
   @pytest.fixture
   def expected_parser(self):
     return [
-      "(('table1',), (), 'id = 9')",
-      "(('table1',), ('table2',), \"table1.name = 'X' AND table2.age > 9\")",
-      "(('table2',), (), \"age > 9 AND status = 'X'\")",
-      "(('table3',), (), 'price BETWEEN 9 AND 9')",
-      "(('table4',), (), \"date BETWEEN 'X' AND 'X' AND category IN ('X', 'X', 'X')\")",
-      "(('table5',), (), \"(status = 'X' OR status = 'X') AND priority > 9\")",
-      "(('table6',), (), 'id IN (sub:table7|value > 9)')",
-      "(('sub:table8',), (), 'subquery.id > 9')",
-      "(('orders',), (), \"customer_id IN (sub:customers|country = 'X' AND age > 9) AND ACTIVE = B\")",
+      (('table1',), (), 'id = 9'),
+      (('table1',), ('table2',), "table1.name = 'X' AND table2.age > 9"),
+      (('table2',), (), "age > 9 AND status = 'X'"),
+      (('table3',), (), 'price BETWEEN 9 AND 9'),
+      (('table4',), (), "date BETWEEN 'X' AND 'X' AND category IN ('X', 'X', 'X')"),
+      (('table5',), (), "(status = 'X' OR status = 'X') AND priority > 9"),
+      (('table6',), (), 'id IN (sub:table7|value > 9)'),
+      (('sub:table8',), (), 'subquery.id > 9'),
+      (('orders',), (), "customer_id IN (sub:customers|country = 'X' AND age > 9) AND ACTIVE = B"),
     ]
 
   def test_checkSQL(self, sql_list, expected_parser):
     for sql, expected_result in zip(sql_list, expected_parser):
       parsed_result = SQLParser.categorize_sql(sql)
-      assert str(parsed_result) == expected_result, f"Failed for SQL: {sql}"
+      assert parsed_result == expected_result, f"Failed for SQL: {sql}"
 
 # ------------------------------------------------------------------------------
 # Main
