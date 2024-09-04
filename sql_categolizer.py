@@ -1,3 +1,5 @@
+import sys
+import pytest
 import sqlparse
 import re
 from sqlparse.sql import IdentifierList, Identifier, Token, Where, Parenthesis
@@ -92,37 +94,75 @@ class SQLParser:
       'where_conditions': where_conditions
     }
 
+  # NOTE: このClassでカテゴライズしたい時はこちらを活かす
+  # @staticmethod
+  # def categorize_sql(sql_list):
+  #   categories = {}
+  #   for sql in sql_list:
+  #     parsed_info = SQLParser.parse_sql(sql)
+  #     key = (
+  #       tuple(sorted(parsed_info['from_tables'])),
+  #       tuple(sorted(parsed_info['join_tables'])),
+  #       parsed_info['where_conditions']
+  #     )
+  #     if key not in categories:
+  #       categories[key] = []
+  #     categories[key].append(sql)
+  #   return categories
+
   @staticmethod
-  def categorize_sql(sql_list):
-    categories = {}
-    for sql in sql_list:
-      parsed_info = SQLParser.parse_sql(sql)
-      key = (
-        tuple(sorted(parsed_info['from_tables'])),
-        tuple(sorted(parsed_info['join_tables'])),
-        parsed_info['where_conditions']
-      )
-      if key not in categories:
-        categories[key] = []
-      categories[key].append(sql)
-    return categories
+  def categorize_sql(sql):
+    parsed_info = SQLParser.parse_sql(sql)
+    return (
+      tuple(sorted(parsed_info['from_tables'])),
+      tuple(sorted(parsed_info['join_tables'])),
+      parsed_info['where_conditions']
+    )
 
-# 使用例
-sql_list = [
-  "SELECT * FROM table1 WHERE id = 1",
-  "SELECT * FROM table1 JOIN table2 ON table1.id = table2.id WHERE table1.name = 'John' AND table2.age > 30",
-  "SELECT * FROM table2 WHERE age > 30 AND status = 'active'",
-  "SELECT * FROM table3 WHERE price BETWEEN 100 AND 200",
-  "SELECT * FROM table4 WHERE date BETWEEN '2023-01-01' AND '2023-12-31' AND category IN ('A', 'B', 'C')",
-  "SELECT * FROM table5 WHERE (status = 'pending' OR status = 'processing') AND priority > 5",
-  "SELECT * FROM table6 WHERE id IN (SELECT id FROM table7 WHERE value > 100)",
-  "SELECT * FROM (SELECT id, name FROM table8 WHERE status = 'active') subquery WHERE subquery.id > 10",
-  "SELECT * FROM orders WHERE customer_id IN (SELECT id FROM customers WHERE country = 'USA' AND age > 18) AND ACTIVE = true"
-]
+# ------------------------------------------------------------------------------
+# TEST
+# ------------------------------------------------------------------------------
+class TestClass:
+  @pytest.fixture
+  def sql_list(self):
+    return [
+      "SELECT * FROM table1 WHERE id = 1",
+      "SELECT * FROM table1 JOIN table2 ON table1.id = table2.id WHERE table1.name = 'John' AND table2.age > 30",
+      "SELECT * FROM table2 WHERE age > 30 AND status = 'active'",
+      "SELECT * FROM table3 WHERE price BETWEEN 100 AND 200",
+      "SELECT * FROM table4 WHERE date BETWEEN '2023-01-01' AND '2023-12-31' AND category IN ('A', 'B', 'C')",
+      "SELECT * FROM table5 WHERE (status = 'pending' OR status = 'processing') AND priority > 5",
+      "SELECT * FROM table6 WHERE id IN (SELECT id FROM table7 WHERE value > 100)",
+      "SELECT * FROM (SELECT id, name FROM table8 WHERE status = 'active') subquery WHERE subquery.id > 10",
+      "SELECT * FROM orders WHERE customer_id IN (SELECT id FROM customers WHERE country = 'USA' AND age > 18) AND ACTIVE = true"
+    ]
 
-categorized = SQLParser.categorize_sql(sql_list)
-for key, sqls in categorized.items():
-  print(f"Category: {key}")
-  for sql in sqls:
-    print(f"  {sql}")
-  print()
+  @pytest.fixture
+  def expected_parser(self):
+    return [
+      "(('table1',), (), 'id = 9')",
+      "(('table1',), ('table2',), \"table1.name = 'X' AND table2.age > 9\")",
+      "(('table2',), (), \"age > 9 AND status = 'X'\")",
+      "(('table3',), (), 'price BETWEEN 9 AND 9')",
+      "(('table4',), (), \"date BETWEEN 'X' AND 'X' AND category IN ('X', 'X', 'X')\")",
+      "(('table5',), (), \"(status = 'X' OR status = 'X') AND priority > 9\")",
+      "(('table6',), (), 'id IN (sub:table7|value > 9)')",
+      "(('sub:table8',), (), 'subquery.id > 9')",
+      "(('orders',), (), \"customer_id IN (sub:customers|country = 'X' AND age > 9) AND ACTIVE = B\")",
+    ]
+
+  def test_checkSQL(self, sql_list, expected_parser):
+    for sql, expected_result in zip(sql_list, expected_parser):
+      parsed_result = SQLParser.categorize_sql(sql)
+      assert str(parsed_result) == expected_result, f"Failed for SQL: {sql}"
+
+# ------------------------------------------------------------------------------
+# Main
+# ------------------------------------------------------------------------------
+def main():
+  for line in sys.stdin:
+    line = line.strip()
+    print(SQLParser.categorize_sql(line))
+
+if __name__ == "__main__":
+  main()

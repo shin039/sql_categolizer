@@ -5,9 +5,13 @@ name = "pypi"
 
 [packages]
 sqlparse = "*"
+pytest = "*"
 
 [dev-packages]
 
 [requires]
 python_version = "3.12"
 python_full_version = "3.12.3"
+
+[scripts]
+start = "python sql_categolizer.py"
