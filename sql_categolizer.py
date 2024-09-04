@@ -62,7 +62,7 @@ class SQLParser:
   @staticmethod
   def extract_subquery_info(subquery):
     # サブクエリのカッコを外す
-    subquery = str(subquery)[1:-1]
+    subquery = str(subquery).strip('()')
 
     parsed_subquery = sqlparse.parse(subquery)[0]
     tables = list(SQLParser.extract_tables(parsed_subquery))
