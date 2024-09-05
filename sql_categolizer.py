@@ -3,7 +3,7 @@ import pytest
 import sqlparse
 import re
 from sqlparse.sql import IdentifierList, Identifier, Token, Where, Parenthesis
-from sqlparse.tokens import Keyword, DML
+from sqlparse.tokens import Keyword, DML, Name
 
 class SQLParser:
   @staticmethod
@@ -93,17 +93,37 @@ class SQLParser:
     return re.sub(r'\(SELECT[^)]+\)', replace_subquery, conditions, flags=re.IGNORECASE)
 
   @staticmethod
+  def extract_clause(parsed, clause_name):
+    clause_seen = False
+    items = []
+    for token in parsed.tokens:
+      if clause_seen:
+        ## 次のキーワードに行ってしまったらBreak
+        if token.ttype is Keyword and token.value.upper() not in [clause_name, 'ASC', 'DESC']:
+          break
+        elif token.ttype in [Name.Builtin, None, Keyword.Order]:
+          # ORDER BY が複数あると、2つ目以降はまとまってしまう。
+          items.append(str(token).strip())
+      elif token.ttype is Keyword and token.value.upper() == clause_name:
+        clause_seen = True
+    return tuple(items)
+
+  @staticmethod
   def parse_sql(sql):
     parsed = sqlparse.parse(sql)[0]
     from_tables = list(SQLParser.extract_tables(parsed, 'FROM'))
     join_tables = list(SQLParser.extract_tables(parsed, 'JOIN', True))
     where_conditions = SQLParser.extract_conditions(parsed)
     where_conditions = SQLParser.process_subqueries(where_conditions)
+    group_by = SQLParser.extract_clause(parsed, 'GROUP BY')
+    order_by = SQLParser.extract_clause(parsed, 'ORDER BY')
     
     return {
       'from_tables': from_tables,
       'join_tables': join_tables,
-      'where_conditions': where_conditions
+      'where_conditions': where_conditions,
+      'group_by': group_by,
+      'order_by': order_by
     }
 
   # NOTE: このClassでカテゴライズしたい時はこちらを活かす
@@ -128,7 +148,9 @@ class SQLParser:
     return (
       tuple(sorted(parsed_info['from_tables'])),
       tuple(sorted(parsed_info['join_tables'])),
-      parsed_info['where_conditions']
+      parsed_info['where_conditions'],
+      parsed_info['group_by'],
+      parsed_info['order_by']
     )
 
 # ------------------------------------------------------------------------------
@@ -148,21 +170,23 @@ class TestClass:
       "SELECT * FROM (SELECT id, name FROM table8 WHERE status = 'active') subquery WHERE subquery.id > 10",
       "SELECT * FROM orders WHERE customer_id IN (SELECT id FROM customers WHERE country = 'USA' AND age > 18) AND ACTIVE = true",
       "SELECT * FROM table1 LEFT  JOIN table2 ON table1.id = table2.id WHERE table1.name = 'John' AND table2.age > 30",
+      "SELECT * FROM table4 WHERE date BETWEEN '2023-01-01' AND '2023-12-31' AND category IN ('A', 'B', 'C') GROUP BY category, date ORDER BY date DESC",
     ]
 
   @pytest.fixture
   def expected_parser(self):
     return [
-      (('table1',), (), 'id = 9'),
-      (('table1',), ('table2',), "table1.name = 'X' AND table2.age > 9"),
-      (('table2',), (), "age > 9 AND status = 'X'"),
-      (('table3',), (), 'price BETWEEN 9 AND 9'),
-      (('table4',), (), "date BETWEEN 'X' AND 'X' AND category IN ('X', 'X', 'X')"),
-      (('table5',), (), "(status = 'X' OR status = 'X') AND priority > 9"),
-      (('table6',), (), 'id IN (sub:table7|value > 9)'),
-      (('sub:table8',), (), 'subquery.id > 9'),
-      (('orders',), (), "customer_id IN (sub:customers|country = 'X' AND age > 9) AND ACTIVE = B"),
-      (('table1',), ('table2',), "table1.name = 'X' AND table2.age > 9"),
+      (('table1',), (), 'id = 9', (), ()),
+      (('table1',), ('table2',), "table1.name = 'X' AND table2.age > 9", (), ()),
+      (('table2',), (), "age > 9 AND status = 'X'", (), ()),
+      (('table3',), (), 'price BETWEEN 9 AND 9', (), ()),
+      (('table4',), (), "date BETWEEN 'X' AND 'X' AND category IN ('X', 'X', 'X')", (), ()),
+      (('table5',), (), "(status = 'X' OR status = 'X') AND priority > 9", (), ()),
+      (('table6',), (), 'id IN (sub:table7|value > 9)', (), ()),
+      (('sub:table8',), (), 'subquery.id > 9', (), ()),
+      (('orders',), (), "customer_id IN (sub:customers|country = 'X' AND age > 9) AND ACTIVE = B", (), ()),
+      (('table1',), ('table2',), "table1.name = 'X' AND table2.age > 9", (), ()),
+      (('table4',), (), "date BETWEEN 'X' AND 'X' AND category IN ('X', 'X', 'X')", ('category', 'date'), ('date', 'DESC')),
     ]
 
   def test_checkSQL(self, sql_list, expected_parser):
