@@ -39,7 +39,7 @@ class SQLParser:
         elif isinstance(item, IdentifierList):
           for identifier in item.get_identifiers():
             yield SQLParser.process_identifier(identifier)
-        elif item.ttype is Keyword and not is_join:
+        elif item.ttype is Keyword and not SQLParser.is_join_clause(item.value.upper()):
           return
       elif item.ttype is Keyword:
         if is_join and SQLParser.is_join_clause(item.value.upper()):
@@ -181,7 +181,7 @@ class TestClass:
       "SELECT * FROM table1, table2",
       # JOIN
       "SELECT * FROM table1 JOIN table2 ON table1.id = table2.id WHERE table1.name = 'John' AND table2.age > 30",
-      "SELECT * FROM table1 LEFT OUTER JOIN table2 ON table1.id = table2.id RIGHT OUTER JOIN table3 ON table2.id = table3.id",
+      "SELECT * FROM table1 LEFT OUTER JOIN table2 ON table1.id = table2.id RIGHT OUTER JOIN table3 ON table2.id = table3.id GROUP BY group_id ORDER BY order_id",
       # WHERE
       "SELECT * FROM table2 WHERE age > 30 AND status = 'active'",
       "SELECT * FROM table3 WHERE price BETWEEN 100 AND 200",
