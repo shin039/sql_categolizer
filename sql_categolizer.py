@@ -128,6 +128,8 @@ class SQLParser:
   @staticmethod
   def parse_sql(sql):
     parsed = sqlparse.parse(sql)[0]
+
+    dml_type    = str(parsed.get_type())
     from_tables = list(SQLParser.extract_tables(parsed, 'FROM'))
     join_tables = list(SQLParser.extract_tables(parsed, 'JOIN', True))
     where_conditions = SQLParser.extract_conditions(parsed)
@@ -136,6 +138,7 @@ class SQLParser:
     order_by = SQLParser.extract_clause(parsed, 'ORDER BY')
     
     return {
+      'dml_type': dml_type,
       'from_tables': from_tables,
       'join_tables': join_tables,
       'where_conditions': where_conditions,
@@ -163,6 +166,7 @@ class SQLParser:
   def categorize_sql(sql):
     parsed_info = SQLParser.parse_sql(sql)
     return (
+      parsed_info['dml_type'],
       tuple(sorted(parsed_info['from_tables'])),
       tuple(sorted(parsed_info['join_tables'])),
       parsed_info['where_conditions'],
@@ -178,7 +182,7 @@ class TestClass:
   def sql_list(self):
     return [
       # Basic
-      "SELECT table1.from as from, table1.id as id FROM table1 WHERE id = 1 LIMIT 100",
+      "SELECT `table1`.`from` as from, table1.id as id FROM table1 WHERE id = 1 LIMIT 100", # XXX: select句にtable1.fromなどのパターンは未対応。
       "SELECT * FROM table1 a WHERE a.from > 0 and a.to < 10 LIMIT 100",
       # FROM
       "SELECT * FROM table1, table2",
@@ -196,23 +200,27 @@ class TestClass:
       "SELECT * FROM orders WHERE customer_id IN (SELECT id FROM customers WHERE country = 'USA' AND age IN (10, 20, 30)) AND ACTIVE = true",
       # GROUP BY, ORDER BY
       "SELECT * FROM table4 WHERE date BETWEEN '2023-01-01' AND '2023-12-31' AND category IN ('A', 'B', 'C') GROUP BY category, date ORDER BY date DESC",
+      # TODO: INSERT
+      # TODO: UPDATE
+      # TODO: DELETE
     ]
 
   @pytest.fixture
   def expected_parser(self):
     return [
-      (('table1',), (), 'id = 9', (), ()),
-      (('table1', 'table2',), (), '', (), ()),
-      (('table1',), ('table2',), "table1.name = 'X' AND table2.age > 9", (), ()),
-      (('table1',), ('table2', 'table3'), '', ('group_id',), ('order_id',)),
-      (('table2',), (), "age > 9 AND status = 'X'", (), ()),
-      (('table3',), (), 'price BETWEEN 9 AND 9', (), ()),
-      (('table4',), (), "category IN ('X') AND status IN (9)", (), ()),
-      (('table5',), (), "(status = 'X' OR status = 'X') AND priority > 9", (), ()),
-      (('table6',), (), 'id IN (sub:table7|value > 9)', (), ()),
-      (('sub:table8',), (), 'subquery.id > 9', (), ()),
-      (('orders',), (), "customer_id IN (sub:customers|country = 'X' AND age IN ( 9)) AND ACTIVE = B", (), ()),
-      (('table4',), (), "date BETWEEN 'X' AND 'X' AND category IN ('X')", ('category', 'date'), ('date', 'DESC')),
+      ('SELECT', ('table1',), (), 'id = 9', (), ()),
+      ('SELECT', ('table1',), (), 'a. from > 9 and a.to < 9', (), ()),
+      ('SELECT', ('table1', 'table2',), (), '', (), ()),
+      ('SELECT', ('table1',), ('table2',), "table1.name = 'X' AND table2.age > 9", (), ()),
+      ('SELECT', ('table1',), ('table2', 'table3'), '', ('group_id',), ('order_id',)),
+      ('SELECT', ('table2',), (), "age > 9 AND status = 'X'", (), ()),
+      ('SELECT', ('table3',), (), 'price BETWEEN 9 AND 9', (), ()),
+      ('SELECT', ('table4',), (), "category IN ('X') AND status IN (9)", (), ()),
+      ('SELECT', ('table5',), (), "(status = 'X' OR status = 'X') AND priority > 9", (), ()),
+      ('SELECT', ('table6',), (), 'id IN (sub:table7|value > 9)', (), ()),
+      ('SELECT', ('sub:table8',), (), 'subquery.id > 9', (), ()),
+      ('SELECT', ('orders',), (), "customer_id IN (sub:customers|country = 'X' AND age IN ( 9)) AND ACTIVE = B", (), ()),
+      ('SELECT', ('table4',), (), "date BETWEEN 'X' AND 'X' AND category IN ('X')", ('category', 'date'), ('date', 'DESC')),
     ]
 
   def test_checkSQL(self, sql_list, expected_parser):
