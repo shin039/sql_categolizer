@@ -39,12 +39,13 @@ class SQLParser:
         elif isinstance(item, IdentifierList):
           for identifier in item.get_identifiers():
             yield SQLParser.process_identifier(identifier)
-        elif item.ttype is Keyword:
+        elif item.ttype is Keyword and not is_join:
           return
-      elif item.ttype is Keyword and is_join and SQLParser.is_join_clause(item.value.upper()):
-        keyword_seen = True
-      elif item.ttype is Keyword and item.value.upper() == keyword:
-        keyword_seen = True
+      elif item.ttype is Keyword:
+        if is_join and SQLParser.is_join_clause(item.value.upper()):
+          keyword_seen = True
+        elif item.value.upper() == keyword:
+          keyword_seen = True
 
   @staticmethod
   def is_join_clause(sql_str):
@@ -63,6 +64,20 @@ class SQLParser:
     conditions = re.sub(r'"[^"]*"', '"X"', conditions)
     conditions = re.sub(r'\bTRUE\b|\bFALSE\b', 'B', conditions, flags=re.IGNORECASE)
     conditions = re.sub(r'\bNULL\b', 'NULL', conditions, flags=re.IGNORECASE)
+
+    # サブクエリを含まないIN句のみを処理
+    def replace_in_clause(match):
+      in_content = match.group(1)
+      if 'SELECT' in in_content.upper():
+        # サブクエリ内の IN 句も再帰的に処理
+        processed_content = re.sub(r'IN\s*\(((?:[^()]+|\([^()]*\))*)\)', replace_in_clause, in_content, flags=re.IGNORECASE)
+        return f"IN ({processed_content})"
+      elif "'" in in_content or '"' in in_content:  # 文字列の場合
+        return "IN ('X')"
+      else:  # 数値の場合
+        return "IN (9)"
+    conditions = re.sub(r'IN\s*\(((?:[^()]+|\([^()]*\))*)\)', replace_in_clause, conditions, flags=re.IGNORECASE)
+
     return re.sub(r'\s+', ' ', conditions).strip()
 
   @staticmethod
@@ -160,16 +175,23 @@ class TestClass:
   @pytest.fixture
   def sql_list(self):
     return [
-      "SELECT * FROM table1 WHERE id = 1",
+      # Basic
+      "SELECT * FROM table1 WHERE id = 1 LIMIT 100",
+      # FROM
+      "SELECT * FROM table1, table2",
+      # JOIN
       "SELECT * FROM table1 JOIN table2 ON table1.id = table2.id WHERE table1.name = 'John' AND table2.age > 30",
+      "SELECT * FROM table1 LEFT OUTER JOIN table2 ON table1.id = table2.id RIGHT OUTER JOIN table3 ON table2.id = table3.id",
+      # WHERE
       "SELECT * FROM table2 WHERE age > 30 AND status = 'active'",
       "SELECT * FROM table3 WHERE price BETWEEN 100 AND 200",
-      "SELECT * FROM table4 WHERE date BETWEEN '2023-01-01' AND '2023-12-31' AND category IN ('A', 'B', 'C')",
+      "SELECT * FROM table4 WHERE category IN ('A', 'B', 'C') AND status IN (0, 1, 2)",
       "SELECT * FROM table5 WHERE (status = 'pending' OR status = 'processing') AND priority > 5",
+      # SUBQUERY
       "SELECT * FROM table6 WHERE id IN (SELECT id FROM table7 WHERE value > 100)",
       "SELECT * FROM (SELECT id, name FROM table8 WHERE status = 'active') subquery WHERE subquery.id > 10",
-      "SELECT * FROM orders WHERE customer_id IN (SELECT id FROM customers WHERE country = 'USA' AND age > 18) AND ACTIVE = true",
-      "SELECT * FROM table1 LEFT  JOIN table2 ON table1.id = table2.id WHERE table1.name = 'John' AND table2.age > 30",
+      "SELECT * FROM orders WHERE customer_id IN (SELECT id FROM customers WHERE country = 'USA' AND age IN (10, 20, 30)) AND ACTIVE = true",
+      # GROUP BY, ORDER BY
       "SELECT * FROM table4 WHERE date BETWEEN '2023-01-01' AND '2023-12-31' AND category IN ('A', 'B', 'C') GROUP BY category, date ORDER BY date DESC",
     ]
 
@@ -177,16 +199,17 @@ class TestClass:
   def expected_parser(self):
     return [
       (('table1',), (), 'id = 9', (), ()),
+      (('table1', 'table2',), (), '', (), ()),
       (('table1',), ('table2',), "table1.name = 'X' AND table2.age > 9", (), ()),
+      (('table1',), ('table2', 'table3',), '', (), ()),
       (('table2',), (), "age > 9 AND status = 'X'", (), ()),
       (('table3',), (), 'price BETWEEN 9 AND 9', (), ()),
-      (('table4',), (), "date BETWEEN 'X' AND 'X' AND category IN ('X', 'X', 'X')", (), ()),
+      (('table4',), (), "category IN ('X') AND status IN (9)", (), ()),
       (('table5',), (), "(status = 'X' OR status = 'X') AND priority > 9", (), ()),
       (('table6',), (), 'id IN (sub:table7|value > 9)', (), ()),
       (('sub:table8',), (), 'subquery.id > 9', (), ()),
-      (('orders',), (), "customer_id IN (sub:customers|country = 'X' AND age > 9) AND ACTIVE = B", (), ()),
-      (('table1',), ('table2',), "table1.name = 'X' AND table2.age > 9", (), ()),
-      (('table4',), (), "date BETWEEN 'X' AND 'X' AND category IN ('X', 'X', 'X')", ('category', 'date'), ('date', 'DESC')),
+      (('orders',), (), "customer_id IN (sub:customers|country = 'X' AND age IN ( 9)) AND ACTIVE = B", (), ()),
+      (('table4',), (), "date BETWEEN 'X' AND 'X' AND category IN ('X')", ('category', 'date'), ('date', 'DESC')),
     ]
 
   def test_checkSQL(self, sql_list, expected_parser):
