@@ -221,8 +221,8 @@ class TestClass:
 # Main
 # ------------------------------------------------------------------------------
 def main():
-  for line in sys.stdin:
-    line = line.strip()
+  line = sys.stdin.readline().strip()
+  if line:
     print(SQLParser.categorize_sql(line))
 
 if __name__ == "__main__":
