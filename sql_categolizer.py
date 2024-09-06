@@ -223,7 +223,8 @@ class TestClass:
 def main():
   for line in sys.stdin:
     line = line.strip()
-    print(SQLParser.categorize_sql(line))
+    if line:
+      print(SQLParser.categorize_sql(line))
 
 if __name__ == "__main__":
   main()
