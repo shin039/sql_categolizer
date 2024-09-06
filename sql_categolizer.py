@@ -39,7 +39,9 @@ class SQLParser:
         elif isinstance(item, IdentifierList):
           for identifier in item.get_identifiers():
             yield SQLParser.process_identifier(identifier)
-        elif item.ttype is Keyword and not SQLParser.is_join_clause(item.value.upper()):
+        elif item.ttype is Keyword:
+          if is_join and SQLParser.is_join_clause(item.value.upper()) or item.value.upper() == "ON":
+            continue
           return
       elif item.ttype is Keyword:
         if is_join and SQLParser.is_join_clause(item.value.upper()):
@@ -176,7 +178,8 @@ class TestClass:
   def sql_list(self):
     return [
       # Basic
-      "SELECT * FROM table1 WHERE id = 1 LIMIT 100",
+      "SELECT table1.from as from, table1.id as id FROM table1 WHERE id = 1 LIMIT 100",
+      "SELECT * FROM table1 a WHERE a.from > 0 and a.to < 10 LIMIT 100",
       # FROM
       "SELECT * FROM table1, table2",
       # JOIN
@@ -201,7 +204,7 @@ class TestClass:
       (('table1',), (), 'id = 9', (), ()),
       (('table1', 'table2',), (), '', (), ()),
       (('table1',), ('table2',), "table1.name = 'X' AND table2.age > 9", (), ()),
-      (('table1',), ('table2', 'table3',), '', (), ()),
+      (('table1',), ('table2', 'table3'), '', ('group_id',), ('order_id',)),
       (('table2',), (), "age > 9 AND status = 'X'", (), ()),
       (('table3',), (), 'price BETWEEN 9 AND 9', (), ()),
       (('table4',), (), "category IN ('X') AND status IN (9)", (), ()),
